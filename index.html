@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SKYNET NFC Analyzer Pro</title>
+<meta name="description" content="Leitor avançado de NFC e analisador de dados de cartão.">
+<style>
+:root {
+--bg: #0f172a;
+--card-bg: #1e293b;
+--text: #e2e8f0;
+--primary: #3b82f6;
+--accent: #10b981;
+--danger: #ef4444;
+--warning: #f59e0b;
+--border: #334155;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Courier New', monospace; }
+
+body {
+background-color: var(--bg);
+color: var(--text);
+padding: 1rem;
+min-height: 100vh;
+display: flex;
+flex-direction: column;
+align-items: center;
+}
+
+header {
+width: 100%;
+max-width: 600px;
+margin-bottom: 1.5rem;
+border-bottom: 2px solid var(--primary);
+padding-bottom: 0.5rem;
+display: flex;
+justify-content: space-between;
+align-items: center;
+}
+
+h1 { font-size: 1.2rem; text-transform: uppercase; letter-spacing: 2px; color: var(--primary); }
+.status-badge { font-size: 0.8rem; padding: 2px 8px; border-radius: 4px; background: var(--border); }
+.status-badge.active { background: var(--accent); color: #000; }
+
+.controls {
+width: 100%;
+max-width: 600px;
+display: grid;
+grid-template-columns: 1fr 1fr;
+gap: 10px;
+margin-bottom: 1.5rem;
+}
+
+button {
+background: var(--card-bg);
+border: 1px solid var(--primary);
+color: var(--primary);
+padding: 12px;
+border-radius: 6px;
+cursor: pointer;
+font-weight: bold;
+text-transform: uppercase;
+transition: all 0.2s;
+}
+
+button:hover { background: var(--primary); color: #fff; }
+button:disabled { border-color: var(--border); color: var(--border); cursor: not-allowed; background: transparent; }
+button.danger { border-color: var(--danger); color: var(--danger); }
+button.danger:hover { background: var(--danger); color: #fff; }
+
+.main-display {
+width: 100%;
+max-width: 600px;
+background: var(--card-bg);
+border: 1px solid var(--border);
+border-radius: 8px;
+padding: 1.5rem;
+margin-bottom: 1.5rem;
+position: relative;
+overflow: hidden;
+}
+
+.main-display::before {
+content: '';
+position: absolute;
+top: 0; left: 0; width: 100%; height: 4px;
+background: linear-gradient(90deg, var(--primary), var(--accent));
+}
+
+.data-row {
+display: flex;
+justify-content: space-between;
+margin-bottom: 0.8rem;
+border-bottom: 1px dashed var(--border);
+padding-bottom: 4px;
+font-size: 0.9rem;
+}
+
+.data-label { color: #94a3b8; font-weight: bold; }
+.data-value { color: var(--text); text-align: right; word-break: break-all; }
+.data-value.highlight { color: var(--accent); font-weight: bold; }
+.data-value.bin-info { color: var(--warning); font-size: 0.8rem; }
+
+.hex-dump {
+background: #000;
+color: #0f0;
+padding: 10px;
+border-radius: 4px;
+font-size: 0.75rem;
+margin-top: 1rem;
+max-height: 150px;
+overflow-y: auto;
+border: 1px solid var(--border);
+}
+
+.tabs {
+width: 100%;
+max-width: 600px;
+display: flex;
+margin-bottom: 10px;
+border-bottom: 1px solid var(--border);
+}
+
+.tab {
+padding: 10px 20px;
+cursor: pointer;
+border-bottom: 2px solid transparent;
+color: #94a3b8;
+}
+
+.tab.active {
+border-bottom-color: var(--primary);
+color: var(--primary);
+font-weight: bold;
+}
+
+.hidden { display: none; }
+
+.log-area {
+width: 100%;
+max-width: 600px;
+background: #000;
+color: #ccc;
+font-size: 0.8rem;
+padding: 10px;
+border-radius: 4px;
+height: 150px;
+overflow-y: auto;
+border: 1px solid var(--border);
+}
+
+.log-entry { margin-bottom: 4px; border-bottom: 1px solid #333; padding-bottom: 2px; }
+.log-time { color: var(--primary); margin-right: 8px; }
+
+@media (max-width: 400px) {
+.controls { grid-template-columns: 1fr; }
+h1 { font-size: 1rem; }
+}
+</style>
+</head>
+<body>
+
+<header>
+<h1>SKYNET NFC <span style="font-size:0.8em; opacity:0.7">v2.4</span></h1>
+<span id="nfc-status" class="status-badge">Aguardando</span>
+</header>
+
+<div class="controls">
+<button id="btn-scan" onclick="startNFCScan()">📡 Iniciar NFC</button>
+<button id="btn-simulate" onclick="simulateCardRead()">🃏 Simular Cartão</button>
+<button id="btn-export-json" onclick="exportData('json')">💾 JSON</button>
+<button id="btn-export-csv" onclick="exportData('csv')">📄 CSV</button>
+<button class="danger" style="grid-column: span 2;" onclick="clearData()">🗑️ Limpar Tudo</button>
+</div>
+
+<div class="tabs">
+<div class="tab active" onclick="switchTab('details')">Dados do Cartão</div>
+<div class="tab" onclick="switchTab('hex')">Hex Dump</div>
+<div class="tab" onclick="switchTab('logs')">Logs do Sistema</div>
+</div>
+
+<!-- TAB: Detalhes -->
+<div id="tab-details" class="main-display">
+<div style="text-align:center; margin-bottom:1rem; color:var(--primary); font-weight:bold;" id="card-brand-display">AGUARDANDO LEITURA...</div>
+
+<div class="data-row"><span class="data-label">Número (PAN):</span><span class="data-value highlight" id="d-number">--</span></div>
+<div class="data-row"><span class="data-label">Validade:</span><span class="data-value" id="d-expiry">--</span></div>
+<div class="data-row"><span class="data-label">Titular:</span><span class="data-value" id="d-holder">--</span></div>
+<div class="data-row"><span class="data-label">Tipo:</span><span class="data-value" id="d-type">--</span></div>
+<div class="data-row"><span class="data-label">Bandeira:</span><span class="data-value" id="d-brand">--</span></div>
+<div class="data-row"><span class="data-label">Banco Emissor:</span><span class="data-value bin-info" id="d-issuer">--</span></div>
+<div class="data-row"><span class="data-label">País:</span><span class="data-value bin-info" id="d-country">--</span></div>
+<div class="data-row"><span class="data-label">Nível:</span><span class="data-value bin-info" id="d-level">--</span></div>
+<div class="data-row"><span class="data-label">Validação Luhn:</span><span class="data-value" id="d-luhn" style="color:var(--danger)">--</span></div>
+<div class="data-row"><span class="data-label">BIN (6 dígitos):</span><span class="data-value" id="d-bin">--</span></div>
+<div class="data-row"><span class="data-label">IIN (8 dígitos):</span><span class="data-value" id="d-iin">--</span></div>
+<div class="data-row"><span class="data-label">Timestamp:</span><span class="data-value" id="d-time">--</span></div>
+</div>
+
+<!-- TAB: Hex Dump -->
+<div id="tab-hex" class="main-display hidden">
+<div style="margin-bottom:0.5rem; color:#94a3b8;">Conteúdo Bruto (NDEF / EMV Simulado)</div>
+<div class="hex-dump" id="hex-content">Nenhum dado bruto disponível.</div>
+</div>
+
+<!-- TAB: Logs -->
+<div id="tab-logs" class="log-area hidden">
+<div class="log-entry"><span class="log-time">SYS</span>Sistema inicializado. Aguardando comando.</div>
+</div>
+
+<script>
+// --- BASE DE DADOS BIN (SIMPLIFICADA PARA EXEMPLO) ---
+const BIN_DATABASE = {
+'4': { brand: 'VISA', type: 'Débito/Crédito' },
+'5': { brand: 'MASTERCARD', type: 'Crédito' },
+'6': { brand: 'ELO/Discover', type: 'Débito/Crédito' },
+'34': { brand: 'AMEX', type: 'Crédito' },
+'35': { brand: 'JCB', type: 'Crédito' },
+'62': { brand: 'UNIONPAY', type: 'Débito/Crédito' }
+};
+
+const ISSUER_DATABASE = {
+'4000': 'Banco Exemplo S.A.',
+'4111': 'Visa Teste',
+'5100': 'Mastercard Standard',
+'6500': 'Elo Mais',
+'3400': 'American Express Gold'
+};
+
+let currentData = null;
+
+// --- FUNÇÕES DE LOG ---
+function log(msg, type = 'INFO') {
+const logArea = document.getElementById('tab-logs');
+const now = new Date().toLocaleTimeString('pt-BR');
+const div = document.createElement('div');
+div.className = 'log-entry';
+div.innerHTML = `<span class="log-time">[${now}] ${type}</span> ${msg}`;
+logArea.prepend(div);
+console.log(`[${type}] ${msg}`);
+}
+
+// --- INTERFACE ---
+function switchTab(tabName) {
+document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+document.querySelectorAll('.main-display,.log-area').forEach(el => el.classList.add('hidden'));
+
+if(tabName === 'details') {
+document.getElementById('tab-details').classList.remove('hidden');
+document.querySelectorAll('.tab').<span class="citation-group citation-pending"><span class="citation-pill">0</span></span>classList.add('active');
+} else if (tabName === 'hex') {
+document.getElementById('tab-hex').classList.remove('hidden');
+document.querySelectorAll('.tab').<span class="citation-group citation-pending"><span class="citation-pill">1</span></span>classList.add('active');
+} else {
+document.getElementById('tab-logs').classList.remove('hidden');
+document.querySelectorAll('.tab').<span class="citation-group citation-pending"><span class="citation-pill">2</span></span>classList.add('active');
+}
+}
+
+function updateUI(data) {
+currentData = data;
+const now = new Date().toLocaleString('pt-BR');
+
+document.getElementById('d-number').textContent = data.number || 'N/A';
+document.getElementById('d-expiry').textContent = data.expiry || 'N/A';
+document.getElementById('d-holder').textContent = data.holder || 'N/A (Não lido)';
+document.getElementById('d-type').textContent = data.type || 'Desconhecido';
+document.getElementById('d-brand').textContent = data.brand || 'Desconhecida';
+document.getElementById('d-issuer').textContent = data.issuer || 'Desconhecido';
+document.getElementById('d-country').textContent = data.country || 'Desconhecido';
+document.getElementById('d-level').textContent = data.level || 'Standard';
+document.getElementById('d-bin').textContent = data.bin || 'N/A';
+document.getElementById('d-iin').textContent = data.iin || 'N/A';
+document.getElementById('d-time').textContent = now;
+
+const luhnValid = validateLuhn(data.number.replace(/\s/g, ''));
+const luhnEl = document.getElementById('d-luhn');
+luhnEl.textContent = luhnValid? 'VÁLIDO ✅': 'INVÁLIDO ❌';
+luhnEl.style.color = luhnValid? 'var(--accent)': 'var(--danger)';
+
+document.getElementById('card-brand-display').textContent = `${data.brand || 'DESCONHECIDO'} - ${data.type || ''}`;
+
+if(data.rawHex) {
+document.getElementById('hex-content').textContent = data.rawHex;
+}
+
+log(`Dados atualizados: ${data.brand} terminando em ${data.number? data.number.slice(-4): '????'}`, 'SUCCESS');
+}
+
+function clearData() {
+currentData = null;
+document.querySelectorAll('.data-value').forEach(el => el.textContent = '--');
+document.getElementById('card-brand-display').textContent = 'AGUARDANDO LEITURA...';
+document.getElementById('d-luhn').textContent = '--';
+document.getElementById('d-luhn').style.color = 'var(--danger)';
+document.getElementById('hex-content').textContent = 'Nenhum dado bruto disponível.';
+log('Dados limpos pelo usuário.', 'WARN');
+}
+
+// --- LÓGICA DE NEGÓCIO ---
+
+function validateLuhn(number) {
+if (!number || isNaN(number)) return false;
+let sum = 0;
+let isEven = false;
+for (let i = number.length - 1; i >= 0; i--) {
+let digit = parseInt(number.charAt(i));
+if (isEven) {
+digit *= 2;
+if (digit > 9) digit -= 9;
+}
+sum += digit;
+isEven =!isEven;
+}
+return (sum % 10) === 0;
+}
+
+function analyzeBIN(number) {
+if (!number || number.length < 6) return { brand: 'Unknown', issuer: 'Unknown', country: 'Unknown', level: 'Unknown' };
+
+const cleanNum = number.replace(/\s/g, '');
+const bin6 = cleanNum.substring(0, 6);
+const bin8 = cleanNum.substring(0, 8);
+const firstDigit = cleanNum.charAt(0);
+const firstTwo = cleanNum.substring(0, 2);
+
+let brand = 'Desconhecida';
+let type = 'Desconhecido';
+let issuer = 'Desconhecido';
+
+// Detecta Bandeira
+if (BIN_DATABASE[firstDigit]) {
+brand = BIN_DATABASE[firstDigit].brand;
+type = BIN_DATABASE[firstDigit].type;
+}
+if (BIN_DATABASE[firstTwo]) {
+brand = BIN_DATABASE[firstTwo].brand;
+}
+
+// Detecta Emissor (Mock)
+if (ISSUER_DATABASE[bin6] || ISSUER_DATABASE[bin8] || ISSUER_DATABASE[firstTwo+'00']) {
+issuer = ISSUER_DATABASE[bin6] || ISSUER_DATABASE[bin8] || ISSUER_DATABASE[firstTwo+'00'];
+} else {
+// Simulação genérica baseada no BIN
+issuer = `Banco BIN ${bin6}`;
+}
+
+return {
+bin: bin6,
+iin: bin8,
+brand: brand,
+type: type,
+issuer: issuer,
+country: 'Brasil (Simulado)', // Web NFC não expõe país real sem backend
+level: 'Gold/Platinum (Estimado)'
+};
+}
+
+function processDataRecord(rawText, source = 'NFC') {
+log(`Processando dados da fonte: ${source}`);
+
+// Tenta extrair padrões de cartão do texto bruto ou usa dados simulados
+const numberMatch = rawText.match(/\b\d{13,19}\b/);
+const expiryMatch = rawText.match(/(\d{2})\/(\d{2})|(\d{4})/);
+const nameMatch = rawText.match(/nome:\s*([a-zA-Z\s]+)/i) || rawText.match(/holder:\s*([a-zA-Z\s]+)/i);
+
+let number = numberMatch? numberMatch<span class="citation-group citation-pending"><span class="citation-pill">0</span></span>: null;
+let expiry = expiryMatch? (expiryMatch?<span class="citation-group citation-pending"><span class="citation-pill">1</span></span> `${expiryMatch<span class="citation-group citation-pending"><span class="citation-pill">1</span></span>}/${expiryMatch<span class="citation-group citation-pending"><span class="citation-pill">2</span></span>}`: expiryMatch<span class="citation-group citation-pending"><span class="citation-pill">3</span></span>): null;
+let holder = nameMatch? nameMatch.<span class="citation-group citation-pending"><span class="citation-pill">1</span></span>trim(): null;
+
+// Se for simulação, usa dados completos. Se for NFC real, depende do que está na tag.
+if (source === 'SIMULATION' &&!number) {
+// Fallback para simulação se regex falhar
+number = "4532 1234 5678 9010";
+expiry = "12/28";
+holder = "FULANO DE TAL";
+}
+
+if (!number) {
+log('Nenhum número de cartão válido encontrado nos dados.', 'ERROR');
+alert('Dados lidos não contêm um número de cartão válido ou formato reconhecido.');
+return;
+}
+
+const binInfo = analyzeBIN(number);
+
+const finalData ={
+number: number,
+expiry: expiry,
+holder: holder,
+brand: binInfo.brand,
+type: binInfo.type,
+issuer: binInfo.issuer,
+country: binInfo.country,
+level: binInfo.level,
+bin: binInfo.bin,
+iin: binInfo.iin,
+rawHex: source === 'SIMULATION'? generateMockHex(number): rawTextToHex(rawText),
+source: source,
+timestamp: new Date().toISOString()
+};
+
+updateUI(finalData);
+saveToHistory(finalData);
+}
+
+function rawTextToHex(text) {
+let hex = '';
+for (let i = 0; i < text.length; i++) {
+hex += ("0" + text.charCodeAt(i).toString(16)).slice(-2).toUpperCase() + ' ';
+if ((i + 1) % 16 === 0) hex += '\n';
+}
+return hex.trim();
+}
+
+function generateMockHex(number) {
+// Simula um dump EMV básico
+const cleanNum = number.replace(/\s/g, '');
+let hex = "70 82 01 2A 61 0C 4F 07 A0 00 00 00 04 10 10 50\n";
+hex += "0A 56 69 73 61 20 43 6C 61 73 73 69 63 9F 26 08 7A\n";
+hex += `9A 03 ${new Date().getFullYear().toString().slice(-2)} 01 01 9C 01 00 9F 02 06\n`;
+hex += "00 00 00 00 10 00 5F 2A 02 09 86 9F 1A 02 01 24 5F\n";
+hex += `3A ${cleanNum.length.toString().padStart(2, '0')} ` + cleanNum.match(/.{1,2}/g).join(' ').toUpperCase() + "\n";
+hex += "82 02 48 00 9F 37 04 B2 45 1C 89 9F 35 01 22 9F 45\n";
+return hex;
+}
+
+let historyLog = [];
+function saveToHistory(data) {
+historyLog.push(data);
+}
+
+// --- NFC REAL (WEB NFC API) ---
+async function startNFCScan() {
+const statusEl = document.getElementById('nfc-status');
+
+if (!('NDEFReader' in window)) {
+log('Web NFC API não suportada neste navegador.', 'ERROR');
+alert('Seu navegador não suporta Web NFC. Use Chrome no Android.');
+return;
+}
+
+try {
+statusEl.textContent = 'Escaneando...';
+statusEl.classList.add('active');
+log('Iniciando scanner NFC...', 'INFO');
+
+const ndef = new NDEFReader();
+await ndef.scan();
+
+ndef.onreading = event => {
+log('Tag NFC detectada!', 'SUCCESS');
+const textRecords = event.message.records.filter(record => record.recordType === "text");
+
+if (textRecords.length > 0) {
+const decoder = new TextDecoder();
+let fullText = "";
+textRecords.forEach(record => {
+fullText += decoder.decode(record.data) + " ";
+});
+processDataRecord(fullText, 'NFC');
+} else {
+// Tenta ler dados brutos se não for texto
+let rawHex = "";
+event.message.records.forEach(record => {
+const data = new Uint8Array(record.data);
+data.forEach(byte => {
+rawHex += ("0" + byte.toString(16)).slice(-2).toUpperCase() + " ";
+});
+rawHex += "\n";
+});
+log('Dados binários lidos (sem texto NDEF claro).', 'WARN');
+// Tenta achar padrão mesmo em binário
+processDataRecord(rawHex, 'NFC');
+}
+
+statusEl.textContent = 'Leitura Concluída';
+setTimeout(() => {
+statusEl.textContent = 'Aguardando';
+statusEl.classList.remove('active');
+}, 2000);
+};
+
+ndef.onreadingerror = () => {
+log('Erro ao ler tag NFC.', 'ERROR');
+statusEl.textContent = 'Erro de Leitura';
+statusEl.classList.remove('active');
+};
+
+} catch (error) {
+log(`Erro fatal: ${error.message}`, 'ERROR');
+statusEl.textContent = 'Falha';
+statusEl.classList.remove('active');
+}
+}
+
+// --- SIMULAÇÃO (PARA TESTES SEM CARTÃO FÍSICO COMPATÍVEL) ---
+function simulateCardRead() {
+log('Iniciando simulação de cartão EMV...', 'INFO');
+
+const mockCards = [
+"4532 1234 5678 9010|12/26|JOAO SILVA|VISA|Banco Teste",
+"5412 9876 5432 1098|08/25|MARIA OLIVEIRA|MASTERCARD|Financiadora S.A.",
+"3782 822463 10005|03/27|CARLOS SANTOS|AMEX|Global Bank",
+"6200 0000 0000 0005|11/24|ANA COSTA|ELO|Caixa Econômica"
+];
+
+const randomCard = mockCards[Math.floor(Math.random()  mockCards.length)];
+const [number, expiry, holder, brand, issuer] = randomCard.split('|');
+
+const mockData = {
+number: number,
+expiry: expiry,
+holder: holder,
+brand: brand,
+type: brand === 'AMEX'? 'Crédito': 'Débito/Crédito',
+issuer: issuer,
+country: 'Brasil',
+level: 'Platinum',
+bin: number.replace(/\s/g, '').substring(0, 6),
+iin: number.replace(/\s/g, '').substring(0, 8),
+rawHex: generateMockHex(number),
+source: 'SIMULATION',
+timestamp: new Date().toISOString()
+};
+
+// Simula delay de leitura
+setTimeout(() => {
+updateUI(mockData);
+saveToHistory(mockData);
+log('Simulação concluída com sucesso.', 'SUCCESS');
+}, 800);
+}
+
+// --- EXPORTAÇÃO ---
+function exportData(format) {
+if (!currentData) {
+alert('Nenhum dado para exportar. Leia ou simule um cartão primeiro.');
+return;
+}
+
+let content = '';
+let mimeType = '';
+let extension = '';
+
+if (format === 'json') {
+content = JSON.stringify(currentData, null, 2);
+mimeType = 'application/json';
+extension = 'json';
+} else if (format === 'csv') {
+const headers = Object.keys(currentData).join(',');
+const values = Object.values(currentData).map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+content = `${headers}\n${values}`;
+mimeType = 'text/csv';
+extension = 'csv';
+}
+
+const blob = new Blob([content], { type: mimeType });
+const url = URL.createObjectURL(blob);
+const a = document.createElement('a');
+a.href = url;
+a.download = `skynet_card_data_${Date.now()}.${extension}`;
+document.body.appendChild(a);
+a.click();
+document.body.removeChild(a);
+URL.revokeObjectURL(url);
+log(`Dados exportados em ${format.toUpperCase()}.`, 'SUCCESS');
+}
+
+// Inicialização
+log('SKYNET NFC Analyzer pronto.', 'SYS');
+if (!('NDEFReader' in window)) {
+log('Aviso: Web NFC indisponível. Use o modo Simulação.', 'WARN');
+document.getElementById('btn-scan').disabled = true;
+document.getElementById('btn-scan').title = "Navegador não suporta NFC";
+}
+</script>
+</body>
+</html>
