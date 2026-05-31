@@ -243,6 +243,7 @@ const BIN_DATABASE = {
 
 let currentData = null;
 let ndefReader = null;
+let isScanning = false;
 
 // --- LOG ---
 function log(msg, type = 'INFO') {
@@ -422,9 +423,29 @@ function generateMockHex(number) {
 }
 
 // --- NFC REAL ---
+function stopNFCScan() {
+  isScanning = false;
+  ndefReader = null;
+  const btn = document.getElementById('btn-scan');
+  const statusEl = document.getElementById('nfc-status');
+  btn.textContent = '📡 Iniciar NFC';
+  btn.classList.remove('danger');
+  btn.style.borderColor = '';
+  btn.style.color = '';
+  statusEl.textContent = 'Aguardando';
+  statusEl.classList.remove('active');
+  log('Scanner NFC parado pelo usuário.', 'WARN');
+}
+
 async function startNFCScan() {
   const statusEl = document.getElementById('nfc-status');
   const btn = document.getElementById('btn-scan');
+
+  // Se já está escaneando, para
+  if (isScanning) {
+    stopNFCScan();
+    return;
+  }
 
   if (!('NDEFReader' in window)) {
     log('Web NFC API não disponível. Use Chrome no Android.', 'ERROR');
@@ -432,7 +453,6 @@ async function startNFCScan() {
     return;
   }
 
-  // Verifica HTTPS
   if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
     log('NFC requer HTTPS.', 'ERROR');
     alert('A leitura NFC requer que a página esteja em HTTPS.');
@@ -440,22 +460,18 @@ async function startNFCScan() {
   }
 
   try {
-    btn.disabled = true;
-    btn.textContent = '⏳ Escaneando...';
+    // Sempre cria um novo reader para evitar "scan() already ongoing"
+    ndefReader = new NDEFReader();
+    isScanning = true;
+
+    btn.textContent = '⏹ Parar NFC';
+    btn.style.borderColor = 'var(--danger)';
+    btn.style.color = 'var(--danger)';
     statusEl.textContent = 'Escaneando...';
     statusEl.classList.add('active');
     log('Scanner NFC iniciado. Aproxime o cartão.', 'INFO');
 
-    // FIX: reutiliza reader para não duplicar listeners
-    if (!ndefReader) {
-      ndefReader = new NDEFReader();
-    }
-
     await ndefReader.scan();
-
-    // FIX: remove listener anterior para evitar duplicação
-    ndefReader.onreading = null;
-    ndefReader.onreadingerror = null;
 
     ndefReader.onreading = (event) => {
       log('Tag NFC detectada!', 'SUCCESS');
@@ -479,28 +495,30 @@ async function startNFCScan() {
         processDataRecord(rawHex, 'NFC');
       }
 
+      // Scanner continua ativo para próximas leituras — não para automaticamente
+      statusEl.textContent = 'Lido! Aguardando...';
       setTimeout(() => {
-        statusEl.textContent = 'Aguardando';
-        statusEl.classList.remove('active');
-        btn.disabled = false;
-        btn.textContent = '📡 Iniciar NFC';
+        if (isScanning) statusEl.textContent = 'Escaneando...';
       }, 2000);
     };
 
     ndefReader.onreadingerror = (err) => {
       log(`Erro de leitura NFC: ${err}`, 'ERROR');
-      statusEl.textContent = 'Erro de Leitura';
-      statusEl.classList.remove('active');
-      btn.disabled = false;
-      btn.textContent = '📡 Iniciar NFC';
+      statusEl.textContent = 'Erro — tente novamente';
+      setTimeout(() => {
+        if (isScanning) statusEl.textContent = 'Escaneando...';
+      }, 2000);
     };
 
   } catch (err) {
+    isScanning = false;
+    ndefReader = null;
     log(`Erro NFC: ${err.message || err}`, 'ERROR');
     statusEl.textContent = 'Falha';
     statusEl.classList.remove('active');
-    btn.disabled = false;
     btn.textContent = '📡 Iniciar NFC';
+    btn.style.borderColor = '';
+    btn.style.color = '';
 
     if (err.name === 'NotAllowedError') {
       alert('Permissão NFC negada. Permita o acesso nas configurações do navegador.');
